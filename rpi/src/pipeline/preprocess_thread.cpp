@@ -64,6 +64,9 @@ void PreprocessThread::run()
 
         if (!preprocess_.process(frame))
         {
+            if (measurement_enabled_)
+                ++failure_count_;
+
             Logger::error("[PreprocessThread] Frame 전처리 실패");
             continue;
         }
@@ -73,6 +76,8 @@ void PreprocessThread::run()
 
         if (measurement_enabled_)
         {
+            ++success_count_;
+
             record_stage_metric(
                 metrics_,
                 frame.metadata,
@@ -88,7 +93,12 @@ void PreprocessThread::run()
             std::chrono::steady_clock::now();
 
         if (!output_queue_.push(std::move(frame)))
+        {
+            if (measurement_enabled_)
+                ++queue_push_failure_count_;
+
             break;
+        }
     }
 
     // Encoding / Streaming Stage에

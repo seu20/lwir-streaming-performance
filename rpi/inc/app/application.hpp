@@ -16,6 +16,7 @@ class Application
 {
 public:
     Application(
+        const CaptureConfig& capture_config,
         const StreamingConfig& streaming_config,
         bool measurement_enabled);
 

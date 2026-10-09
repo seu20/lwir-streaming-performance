@@ -12,7 +12,7 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 # ============================================================
 
 find_package(Threads REQUIRED)
-find_package(OpenCV 4.5 REQUIRED COMPONENTS core)
+find_package(OpenCV 4.5 REQUIRED COMPONENTS core imgcodecs)
 
 find_package(PkgConfig REQUIRED)
 
@@ -22,6 +22,7 @@ pkg_check_modules(
     IMPORTED_TARGET
     gstreamer-1.0>=1.20
     gstreamer-app-1.0>=1.20
+    gstreamer-rtp-1.0>=1.20
 )
 
 

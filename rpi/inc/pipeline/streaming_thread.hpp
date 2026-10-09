@@ -24,6 +24,26 @@ public:
         return submission_metrics_;
     }
 
+    const std::vector<FpsMetric>& fps_metrics() const
+    {
+        return fps_metrics_;
+    }
+
+    std::uint64_t success_count() const
+    {
+        return success_count_;
+    }
+
+    std::uint64_t failure_count() const
+    {
+        return failure_count_;
+    }
+
+    double fps_duration_seconds() const
+    {
+        return fps_duration_seconds_;
+    }
+
 private:
     static void* thread_func(void* arg);
     void run();
@@ -48,4 +68,8 @@ private:
      * H.264 Encoder 실제 처리시간이 아니다.
      */
     std::vector<StageMetric> submission_metrics_;
+    std::vector<FpsMetric> fps_metrics_;
+    std::uint64_t success_count_ = 0;
+    std::uint64_t failure_count_ = 0;
+    double fps_duration_seconds_ = 0.0;
 };

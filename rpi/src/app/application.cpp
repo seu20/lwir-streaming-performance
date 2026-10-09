@@ -5,9 +5,17 @@
 
 
 Application::Application(
+    const CaptureConfig& capture_config,
     const StreamingConfig& streaming_config,
     bool measurement_enabled)
-    : streaming_(streaming_config),
+    : capture_(
+          capture_config,
+          streaming_config.width,
+          streaming_config.height),
+
+      streaming_(
+          streaming_config,
+          measurement_enabled),
 
       capture_thread_(
           capture_,
@@ -55,6 +63,31 @@ bool Application::run()
         const auto& streaming_metrics =
             streaming_thread_.metrics();
 
+        const auto encoding_metrics =
+            streaming_.encoding_metrics();
+
+        FrameMetricSummary frame_metrics;
+        frame_metrics.capture_success_count =
+            capture_thread_.success_count();
+        frame_metrics.preprocess_success_count =
+            preprocess_thread_.success_count();
+        frame_metrics.streaming_submit_success_count =
+            streaming_thread_.success_count();
+
+        // 현재 두 Queue 모두 일반 FIFO push()만 사용하므로
+        // Queue 정책에 의해 명시적으로 제거된 Frame은 없다.
+        frame_metrics.queue_policy_drop_count = 0;
+        frame_metrics.preprocess_failure_count =
+            preprocess_thread_.failure_count();
+        frame_metrics.streaming_submit_failure_count =
+            streaming_thread_.failure_count();
+        frame_metrics.capture_queue_push_failure_count =
+            capture_thread_.queue_push_failure_count();
+        frame_metrics.streaming_queue_push_failure_count =
+            preprocess_thread_.queue_push_failure_count();
+        frame_metrics.dataset_deadline_miss_count =
+            capture_thread_.dataset_deadline_miss_count();
+
 
         // Console summary
         print_stage_summary(
@@ -72,6 +105,25 @@ bool Application::run()
             streaming_metrics
         );
 
+        print_stage_summary(
+            "H.264 Encoding",
+            encoding_metrics
+        );
+
+        print_fps_summary(
+            "Capture FPS",
+            capture_thread_.success_count(),
+            capture_thread_.fps_duration_seconds()
+        );
+
+        print_fps_summary(
+            "Streaming Submit FPS",
+            streaming_thread_.success_count(),
+            streaming_thread_.fps_duration_seconds()
+        );
+
+        print_frame_summary(frame_metrics);
+
 
         // Raw measurement CSV
         save_stage_metrics_csv(
@@ -87,6 +139,22 @@ bool Application::run()
         save_stage_metrics_csv(
             "streaming_metrics.csv",
             streaming_metrics
+        );
+
+        save_encoding_metrics_csv(
+            "encoding_metrics.csv",
+            encoding_metrics
+        );
+
+        save_fps_metrics_csv(
+            "fps_metrics.csv",
+            capture_thread_.fps_metrics(),
+            streaming_thread_.fps_metrics()
+        );
+
+        save_frame_metrics_csv(
+            "frame_metrics.csv",
+            frame_metrics
         );
     }
 

@@ -25,6 +25,21 @@ public:
         return metrics_;
     }
 
+    std::uint64_t success_count() const
+    {
+        return success_count_;
+    }
+
+    std::uint64_t failure_count() const
+    {
+        return failure_count_;
+    }
+
+    std::uint64_t queue_push_failure_count() const
+    {
+        return queue_push_failure_count_;
+    }
+
 private:
     static void* thread_func(void* arg);
     void run();
@@ -38,4 +53,7 @@ private:
     pthread_t thread_{};
 
     std::vector<StageMetric> metrics_;
+    std::uint64_t success_count_ = 0;
+    std::uint64_t failure_count_ = 0;
+    std::uint64_t queue_push_failure_count_ = 0;
 };

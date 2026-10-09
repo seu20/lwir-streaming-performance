@@ -49,6 +49,163 @@ void save_stage_metrics_csv(
 }
 
 
+void save_encoding_metrics_csv(
+    const std::string& filename,
+    const std::vector<StageMetric>& metrics)
+{
+    std::ofstream file(filename);
+
+    if (!file.is_open())
+    {
+        std::cerr
+            << "[Metrics] CSV 열기 실패: "
+            << filename << '\n';
+
+        return;
+    }
+
+    file << "frame_id,encoding_ms\n";
+    file << std::fixed << std::setprecision(3);
+
+    for (const auto& metric : metrics)
+    {
+        file
+            << metric.frame_id << ","
+            << metric.processing_ms << "\n";
+    }
+}
+
+
+void save_fps_metrics_csv(
+    const std::string& filename,
+    const std::vector<FpsMetric>& capture_metrics,
+    const std::vector<FpsMetric>& streaming_metrics)
+{
+    std::ofstream file(filename);
+
+    if (!file.is_open())
+    {
+        std::cerr
+            << "[Metrics] CSV 열기 실패: "
+            << filename << '\n';
+        return;
+    }
+
+    file
+        << "stage,interval_index,interval_start_s,"
+        << "interval_end_s,frame_count,fps\n";
+    file << std::fixed << std::setprecision(3);
+
+    const auto write_metrics =
+        [&file](
+            const std::string& stage,
+            const std::vector<FpsMetric>& metrics)
+        {
+            for (std::size_t index = 0;
+                 index < metrics.size();
+                 ++index)
+            {
+                const auto& metric = metrics[index];
+
+                file
+                    << stage << ","
+                    << index + 1 << ","
+                    << metric.interval_start_s << ","
+                    << metric.interval_end_s << ","
+                    << metric.frame_count << ","
+                    << metric.fps << "\n";
+            }
+        };
+
+    write_metrics("capture", capture_metrics);
+    write_metrics("streaming_submit", streaming_metrics);
+}
+
+
+void save_frame_metrics_csv(
+    const std::string& filename,
+    const FrameMetricSummary& metrics)
+{
+    std::ofstream file(filename);
+
+    if (!file.is_open())
+    {
+        std::cerr
+            << "[Metrics] CSV 열기 실패: "
+            << filename << '\n';
+        return;
+    }
+
+    const std::uint64_t preprocess_attempt_count =
+        metrics.preprocess_success_count +
+        metrics.preprocess_failure_count;
+
+    const std::uint64_t streaming_attempt_count =
+        metrics.streaming_submit_success_count +
+        metrics.streaming_submit_failure_count;
+
+    const std::uint64_t queue_push_attempt_count =
+        metrics.capture_success_count +
+        metrics.preprocess_success_count;
+
+    const auto rate = [](
+        std::uint64_t count,
+        std::uint64_t denominator)
+    {
+        if (denominator == 0)
+            return 0.0;
+
+        return 100.0 *
+            static_cast<double>(count) /
+            static_cast<double>(denominator);
+    };
+
+    file
+        << "capture_success_count,"
+        << "preprocess_attempt_count,"
+        << "preprocess_success_count,"
+        << "preprocess_failure_count,"
+        << "preprocess_failure_rate_pct,"
+        << "streaming_submit_attempt_count,"
+        << "streaming_submit_success_count,"
+        << "streaming_submit_failure_count,"
+        << "streaming_submit_failure_rate_pct,"
+        << "queue_push_attempt_count,"
+        << "queue_policy_drop_count,"
+        << "queue_policy_drop_rate_pct,"
+        << "capture_queue_push_failure_count,"
+        << "streaming_queue_push_failure_count,"
+        << "dataset_deadline_miss_count\n";
+
+    file << std::fixed << std::setprecision(3);
+    file
+        << metrics.capture_success_count << ","
+        << preprocess_attempt_count << ","
+        << metrics.preprocess_success_count << ","
+        << metrics.preprocess_failure_count << ","
+        << rate(
+               metrics.preprocess_failure_count,
+               preprocess_attempt_count
+           ) << ","
+        << streaming_attempt_count << ","
+        << metrics.streaming_submit_success_count << ","
+        << metrics.streaming_submit_failure_count << ","
+        << rate(
+               metrics.streaming_submit_failure_count,
+               streaming_attempt_count
+           ) << ","
+        << queue_push_attempt_count << ","
+        << metrics.queue_policy_drop_count << ","
+        << rate(
+               metrics.queue_policy_drop_count,
+               queue_push_attempt_count
+           ) << ","
+        << metrics.capture_queue_push_failure_count << ","
+        << metrics.streaming_queue_push_failure_count << ","
+        << metrics.dataset_deadline_miss_count << "\n";
+}
+
+
 void print_stage_summary(
     const std::string& stage_name,
     const std::vector<StageMetric>& metrics)
@@ -123,4 +280,46 @@ void print_stage_summary(
         << " p99="
         << processing_values[p99_index]
         << " ms\n";
+}
+
+
+void print_fps_summary(
+    const std::string& stage_name,
+    std::uint64_t frame_count,
+    double duration_seconds)
+{
+    const double average_fps =
+        duration_seconds > 0.0
+            ? static_cast<double>(frame_count) /
+                duration_seconds
+            : 0.0;
+
+    std::cout
+        << std::fixed
+        << std::setprecision(3)
+        << "[Metrics] " << stage_name
+        << " frames=" << frame_count
+        << " duration=" << duration_seconds << " s"
+        << " average=" << average_fps << " FPS\n";
+}
+
+
+void print_frame_summary(
+    const FrameMetricSummary& metrics)
+{
+    std::cout
+        << "[Metrics] Frame counts"
+        << " capture=" << metrics.capture_success_count
+        << " preprocess=" << metrics.preprocess_success_count
+        << " streaming_submit="
+        << metrics.streaming_submit_success_count
+        << " queue_policy_drop="
+        << metrics.queue_policy_drop_count
+        << " preprocess_failure="
+        << metrics.preprocess_failure_count
+        << " streaming_submit_failure="
+        << metrics.streaming_submit_failure_count
+        << " dataset_deadline_miss="
+        << metrics.dataset_deadline_miss_count
+        << '\n';
 }

@@ -66,6 +66,15 @@ void StreamingThread::run()
     }
 
 
+    const auto fps_started_at =
+        std::chrono::steady_clock::now();
+
+    auto fps_interval_started_at =
+        fps_started_at;
+
+    std::uint64_t fps_interval_frame_count = 0;
+
+
     Frame frame;
 
 
@@ -77,6 +86,9 @@ void StreamingThread::run()
 
         if (!streaming_.push(frame))
         {
+            if (measurement_enabled_)
+                ++failure_count_;
+
             Logger::error(
                 "[StreamingThread] Frame 전송 실패"
             );
@@ -91,6 +103,16 @@ void StreamingThread::run()
 
         if (measurement_enabled_)
         {
+            ++success_count_;
+
+            record_fps_frame(
+                fps_metrics_,
+                fps_started_at,
+                fps_interval_started_at,
+                fps_interval_frame_count,
+                finished_at
+            );
+
             /*
              * 여기서 측정되는 것:
              *
@@ -109,6 +131,26 @@ void StreamingThread::run()
                 false
             );
         }
+    }
+
+
+    if (measurement_enabled_)
+    {
+        const auto fps_finished_at =
+            std::chrono::steady_clock::now();
+
+        finish_fps_measurement(
+            fps_metrics_,
+            fps_started_at,
+            fps_interval_started_at,
+            fps_interval_frame_count,
+            fps_finished_at
+        );
+
+        fps_duration_seconds_ =
+            std::chrono::duration<double>(
+                fps_finished_at - fps_started_at
+            ).count();
     }
 
 
