@@ -23,7 +23,7 @@ int main()
     StreamingConfig streaming_config;
 
     // Raspberry Pi에서 영상을 받을 PC의 IP.
-    streaming_config.host = "192.168.0.10";
+    streaming_config.host = "10.42.0.1";
 
     streaming_config.port = 5004;
 
