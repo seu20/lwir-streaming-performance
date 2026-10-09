@@ -1,5 +1,7 @@
 #pragma once
 
+#include <string>
+
 #include "app/capture.hpp"
 #include "app/preprocess.hpp"
 #include "app/streaming.hpp"
@@ -18,7 +20,9 @@ public:
     Application(
         const CaptureConfig& capture_config,
         const StreamingConfig& streaming_config,
-        bool measurement_enabled);
+        bool measurement_enabled,
+        QueueConfig queue_config = {},
+        std::string metrics_output_dir = {});
 
     bool run();
 
@@ -34,4 +38,5 @@ private:
     PreprocessThread preprocess_thread_;
     StreamingThread streaming_thread_;
     bool measurement_enabled_;
+    std::string metrics_output_dir_;
 };

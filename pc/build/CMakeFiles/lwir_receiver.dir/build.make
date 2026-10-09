@@ -114,6 +114,7 @@ lwir_receiver: /usr/lib/x86_64-linux-gnu/libopencv_imgcodecs.so.4.5.4d
 lwir_receiver: /usr/lib/x86_64-linux-gnu/libopencv_imgproc.so.4.5.4d
 lwir_receiver: /usr/lib/x86_64-linux-gnu/libopencv_core.so.4.5.4d
 lwir_receiver: /usr/lib/x86_64-linux-gnu/libgstapp-1.0.so
+lwir_receiver: /usr/lib/x86_64-linux-gnu/libgstrtp-1.0.so
 lwir_receiver: /usr/lib/x86_64-linux-gnu/libgstbase-1.0.so
 lwir_receiver: /usr/lib/x86_64-linux-gnu/libgstreamer-1.0.so
 lwir_receiver: /usr/lib/x86_64-linux-gnu/libgobject-2.0.so

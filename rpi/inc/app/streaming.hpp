@@ -23,6 +23,33 @@ struct StreamingConfig
     int width = 640;
     int height = 480;
     int fps = 30;
+
+    // Empty/-1 values preserve the element defaults.
+    std::string encoder_factory = "x264enc";
+    std::string tune;
+    std::string speed_preset;
+    int bframes = -1;
+    int bitrate_kbps = -1;
+    int key_int_max = -1;
+
+    // GStreamer queue defaults are preserved when depth is -1.
+    int gst_queue_depth = -1;
+    // 0=no leak, 1=drop new buffers, 2=drop old buffers.
+    int gst_queue_leaky = 0;
+
+    bool direct_gray8 = false;
+    bool zero_copy_submit = false;
+};
+
+struct NetworkMetricSummary
+{
+    std::uint64_t rtp_packet_count = 0;
+    std::uint64_t rtp_byte_count = 0;
+    double duration_seconds = 0.0;
+    double average_bitrate_kbps = 0.0;
+    std::uint64_t metadata_injected_count = 0;
+    std::uint64_t metadata_lookup_miss_count = 0;
+    std::uint64_t metadata_extension_failure_count = 0;
 };
 
 
@@ -45,6 +72,7 @@ public:
 
     // Pipeline 종료 후 수집된 Encoding 측정값의 snapshot을 반환한다.
     std::vector<StageMetric> encoding_metrics() const;
+    NetworkMetricSummary network_metrics() const;
 
 private:
     struct PendingEncoding
@@ -110,6 +138,14 @@ private:
     std::vector<StageMetric> encoding_metrics_;
     GstClockTime first_encoder_input_pts_ = GST_CLOCK_TIME_NONE;
     GstClockTime encoder_pts_offset_ = GST_CLOCK_TIME_NONE;
+
+    std::uint64_t rtp_packet_count_ = 0;
+    std::uint64_t rtp_byte_count_ = 0;
+    std::uint64_t metadata_injected_count_ = 0;
+    std::uint64_t metadata_lookup_miss_count_ = 0;
+    std::uint64_t metadata_extension_failure_count_ = 0;
+    std::chrono::steady_clock::time_point first_rtp_packet_at_{};
+    std::chrono::steady_clock::time_point last_rtp_packet_at_{};
 
     bool opened_ = false;
 };

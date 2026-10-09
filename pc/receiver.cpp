@@ -28,19 +28,17 @@ constexpr guint kRtpClockRate = 90000;
 }
 
 
-Receiver::Receiver(
-    int port,
-    bool measurement_enabled,
-    bool clocks_synchronized,
-    bool recording_enabled,
-    std::string output_path,
-    double recording_fps)
-    : port_(port),
-      measurement_enabled_(measurement_enabled),
-      clocks_synchronized_(clocks_synchronized),
-      recording_enabled_(recording_enabled),
-      output_path_(std::move(output_path)),
-      recording_fps_(recording_fps)
+Receiver::Receiver(ReceiverConfig config)
+    : port_(config.port),
+      measurement_enabled_(config.measurement_enabled),
+      clocks_synchronized_(config.clocks_synchronized),
+      recording_enabled_(config.recording_enabled),
+      output_path_(std::move(config.recording_output_path)),
+      recording_fps_(config.recording_fps),
+      metrics_output_dir_(std::move(config.metrics_output_dir)),
+      idle_timeout_seconds_(config.idle_timeout_seconds),
+      udp_buffer_bytes_(config.udp_buffer_bytes),
+      jitter_latency_ms_(config.jitter_latency_ms)
 {
 }
 
@@ -58,6 +56,23 @@ bool Receiver::open()
 
     if (!prepare_recording_output())
         return false;
+
+    if (!metrics_output_dir_.empty())
+    {
+        std::error_code error;
+        std::filesystem::create_directories(
+            metrics_output_dir_,
+            error
+        );
+        if (error)
+        {
+            std::cerr
+                << "[Receiver] Metrics 디렉터리 생성 실패: "
+                << metrics_output_dir_ << " ("
+                << error.message() << ")\n";
+            return false;
+        }
+    }
 
     gst_init(nullptr, nullptr);
 
@@ -82,14 +97,34 @@ bool Receiver::open()
      * appsink
      *   ↓ C++에서 Frame 수신
      */
-    const std::string pipeline_description =
+    std::string source_options =
         "udpsrc name=receiver_source port=" +
-        std::to_string(port_) +
+        std::to_string(port_);
+
+    if (udp_buffer_bytes_ > 0)
+    {
+        source_options +=
+            " buffer-size=" +
+            std::to_string(udp_buffer_bytes_);
+    }
+
+    std::string jitter_element;
+    if (jitter_latency_ms_ >= 0)
+    {
+        jitter_element =
+            "! rtpjitterbuffer latency=" +
+            std::to_string(jitter_latency_ms_) +
+            " drop-on-latency=true ";
+    }
+
+    const std::string pipeline_description =
+        source_options +
         " caps=\"application/x-rtp,"
         "media=video,"
         "encoding-name=H264,"
         "payload=96,"
-        "clock-rate=90000\" "
+        "clock-rate=90000\" " +
+        jitter_element +
         "! rtph264depay "
         "! h264parse "
         "! avdec_h264 "
@@ -228,6 +263,10 @@ void Receiver::run()
             fps_started_at_;
     }
 
+    bool received_any_frame = false;
+    auto last_frame_received_at =
+        std::chrono::steady_clock::now();
+
     while (true)
     {
         /*
@@ -257,6 +296,18 @@ void Receiver::run()
             if (key == 'q' || key == 27)
                 break;
 
+            if (received_any_frame &&
+                idle_timeout_seconds_ > 0.0 &&
+                std::chrono::duration<double>(
+                    std::chrono::steady_clock::now() -
+                    last_frame_received_at
+                ).count() >= idle_timeout_seconds_)
+            {
+                std::cout
+                    << "[Receiver] 입력 없음 timeout으로 종료\n";
+                break;
+            }
+
             continue;
         }
 
@@ -264,6 +315,8 @@ void Receiver::run()
         // 이후 화면 출력 및 MP4 압축 시간은 포함하지 않는다.
         const auto received_at =
             std::chrono::steady_clock::now();
+        received_any_frame = true;
+        last_frame_received_at = received_at;
 
         GstCaps* caps =
             gst_sample_get_caps(sample);
@@ -577,6 +630,86 @@ void Receiver::receive_rtp_metadata(
 }
 
 
+std::unordered_map<
+    GstClockTime,
+    Receiver::ReceivedMetadata>::iterator
+Receiver::find_metadata_for_decoder_pts(
+    GstClockTime decoder_pts)
+{
+    if (pending_metadata_.empty())
+        return pending_metadata_.end();
+
+    while (!pending_order_.empty() &&
+           pending_metadata_.find(
+               pending_order_.front()
+           ) == pending_metadata_.end())
+    {
+        pending_order_.pop_front();
+    }
+
+    if (!GST_CLOCK_TIME_IS_VALID(decoder_pts_offset_))
+    {
+        if (pending_order_.empty() ||
+            decoder_pts < pending_order_.front())
+        {
+            return pending_metadata_.end();
+        }
+
+        decoder_pts_offset_ =
+            decoder_pts - pending_order_.front();
+    }
+
+    if (decoder_pts < decoder_pts_offset_)
+        return pending_metadata_.end();
+
+    const GstClockTime normalized_pts =
+        decoder_pts - decoder_pts_offset_;
+
+    auto exact = pending_metadata_.find(normalized_pts);
+    if (exact != pending_metadata_.end())
+        return exact;
+
+    constexpr GstClockTime kMatchTolerance = GST_MSECOND;
+    auto nearest = pending_metadata_.end();
+    GstClockTime nearest_distance = GST_CLOCK_TIME_NONE;
+
+    for (auto candidate = pending_metadata_.begin();
+         candidate != pending_metadata_.end();
+         ++candidate)
+    {
+        const GstClockTime distance =
+            candidate->first > normalized_pts
+                ? candidate->first - normalized_pts
+                : normalized_pts - candidate->first;
+
+        if (distance < nearest_distance)
+        {
+            nearest = candidate;
+            nearest_distance = distance;
+        }
+    }
+
+    if (nearest != pending_metadata_.end() &&
+        nearest_distance <= kMatchTolerance)
+    {
+        return nearest;
+    }
+
+    if (!pts_diagnostic_reported_)
+    {
+        std::cerr
+            << "[Receiver] PTS match 실패 decoder="
+            << decoder_pts
+            << " normalized=" << normalized_pts
+            << " nearest_delta=" << nearest_distance
+            << '\n';
+        pts_diagnostic_reported_ = true;
+    }
+
+    return pending_metadata_.end();
+}
+
+
 void Receiver::record_e2e(
     GstBuffer* buffer,
     std::chrono::system_clock::time_point received_at)
@@ -600,18 +733,18 @@ void Receiver::record_e2e(
         metrics_mutex_
     );
 
-    const auto metadata =
-        pending_metadata_.find(pts);
+    auto matched_metadata =
+        find_metadata_for_decoder_pts(pts);
 
-    if (metadata == pending_metadata_.end())
+    if (matched_metadata == pending_metadata_.end())
         return;
 
-    if (metadata->second.captured_system_ns <= 0)
+    if (matched_metadata->second.captured_system_ns <= 0)
         return;
 
     const std::int64_t latency_ns =
         received_ns -
-        metadata->second.captured_system_ns;
+        matched_metadata->second.captured_system_ns;
 
     if (latency_ns < 0)
     {
@@ -630,7 +763,7 @@ void Receiver::record_e2e(
     if (e2e_metrics_.size() < kMaxE2eMetrics)
     {
         e2e_metrics_.push_back({
-            metadata->second.frame_id,
+            matched_metadata->second.frame_id,
             static_cast<double>(latency_ns) /
                 1000000.0
         });
@@ -693,8 +826,8 @@ void Receiver::record_received_frame(
         metrics_mutex_
     );
 
-    const auto metadata =
-        pending_metadata_.find(pts);
+    auto metadata =
+        find_metadata_for_decoder_pts(pts);
 
     if (metadata == pending_metadata_.end())
         return;
@@ -730,7 +863,14 @@ void Receiver::record_received_frame(
         ++out_of_order_frame_count_;
     }
 
+    const GstClockTime matched_pts = metadata->first;
     pending_metadata_.erase(metadata);
+
+    if (!pending_order_.empty() &&
+        pending_order_.front() == matched_pts)
+    {
+        pending_order_.pop_front();
+    }
 }
 
 
@@ -822,7 +962,9 @@ void Receiver::save_e2e_metrics_csv() const
         metrics = e2e_metrics_;
     }
 
-    std::ofstream file("receiver_e2e_metrics.csv");
+    std::ofstream file(
+        metric_path("receiver_e2e_metrics.csv")
+    );
 
     if (!file.is_open())
     {
@@ -845,7 +987,9 @@ void Receiver::save_e2e_metrics_csv() const
 
 void Receiver::save_fps_metrics_csv() const
 {
-    std::ofstream file("receiver_fps_metrics.csv");
+    std::ofstream file(
+        metric_path("receiver_fps_metrics.csv")
+    );
 
     if (!file.is_open())
     {
@@ -907,7 +1051,9 @@ void Receiver::save_frame_metrics_csv() const
                 static_cast<double>(observable_span_count)
             : 0.0;
 
-    std::ofstream file("receiver_frame_metrics.csv");
+    std::ofstream file(
+        metric_path("receiver_frame_metrics.csv")
+    );
 
     if (!file.is_open())
     {
@@ -982,6 +1128,18 @@ void Receiver::print_measurement_summary() const
         << " denominator=" << observable_span_count
         << " drop_rate=" << observable_drop_rate
         << "%\n";
+}
+
+
+std::string Receiver::metric_path(const char* filename) const
+{
+    if (metrics_output_dir_.empty())
+        return filename;
+
+    return (
+        std::filesystem::path(metrics_output_dir_) /
+        filename
+    ).string();
 }
 
 

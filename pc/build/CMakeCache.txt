@@ -22,7 +22,7 @@ CMAKE_AR:FILEPATH=/usr/bin/ar
 
 //Choose the type of build, options are: None Debug Release RelWithDebInfo
 // MinSizeRel ...
-CMAKE_BUILD_TYPE:STRING=
+CMAKE_BUILD_TYPE:STRING=Release
 
 //Enable/Disable color output during build.
 CMAKE_COLOR_MAKEFILE:BOOL=ON
@@ -216,6 +216,9 @@ pkgcfg_lib_GSTREAMER_gstbase-1.0:FILEPATH=/usr/lib/x86_64-linux-gnu/libgstbase-1
 //Path to a library.
 pkgcfg_lib_GSTREAMER_gstreamer-1.0:FILEPATH=/usr/lib/x86_64-linux-gnu/libgstreamer-1.0.so
 
+//Path to a library.
+pkgcfg_lib_GSTREAMER_gstrtp-1.0:FILEPATH=/usr/lib/x86_64-linux-gnu/libgstrtp-1.0.so
+
 
 ########################
 # INTERNAL cache entries
@@ -349,19 +352,19 @@ CMAKE_UNAME:INTERNAL=/usr/bin/uname
 //ADVANCED property for variable: CMAKE_VERBOSE_MAKEFILE
 CMAKE_VERBOSE_MAKEFILE-ADVANCED:INTERNAL=1
 //Details about finding OpenCV
-FIND_PACKAGE_MESSAGE_DETAILS_OpenCV:INTERNAL=[/usr][cfound components: core highgui ][v4.5.4(4.5)]
+FIND_PACKAGE_MESSAGE_DETAILS_OpenCV:INTERNAL=[/usr][cfound components: core highgui videoio ][v4.5.4(4.5)]
 //Details about finding PkgConfig
 FIND_PACKAGE_MESSAGE_DETAILS_PkgConfig:INTERNAL=[/usr/bin/pkg-config][v0.29.2()]
-GSTREAMER_CFLAGS:INTERNAL=-pthread;-I/usr/include/gstreamer-1.0;-I/usr/include/x86_64-linux-gnu;-I/usr/include/glib-2.0;-I/usr/lib/x86_64-linux-gnu/glib-2.0/include
+GSTREAMER_CFLAGS:INTERNAL=-pthread;-I/usr/include/gstreamer-1.0;-I/usr/include/orc-0.4;-I/usr/include/gstreamer-1.0;-I/usr/include/x86_64-linux-gnu;-I/usr/include/glib-2.0;-I/usr/lib/x86_64-linux-gnu/glib-2.0/include
 GSTREAMER_CFLAGS_I:INTERNAL=
 GSTREAMER_CFLAGS_OTHER:INTERNAL=-pthread
 GSTREAMER_FOUND:INTERNAL=1
 GSTREAMER_INCLUDEDIR:INTERNAL=
-GSTREAMER_INCLUDE_DIRS:INTERNAL=/usr/include/gstreamer-1.0;/usr/include/x86_64-linux-gnu;/usr/include/glib-2.0;/usr/lib/x86_64-linux-gnu/glib-2.0/include
-GSTREAMER_LDFLAGS:INTERNAL=-L/usr/lib/x86_64-linux-gnu;-lgstapp-1.0;-lgstbase-1.0;-lgstreamer-1.0;-lgobject-2.0;-lglib-2.0
+GSTREAMER_INCLUDE_DIRS:INTERNAL=/usr/include/gstreamer-1.0;/usr/include/orc-0.4;/usr/include/gstreamer-1.0;/usr/include/x86_64-linux-gnu;/usr/include/glib-2.0;/usr/lib/x86_64-linux-gnu/glib-2.0/include
+GSTREAMER_LDFLAGS:INTERNAL=-L/usr/lib/x86_64-linux-gnu;-lgstapp-1.0;-lgstrtp-1.0;-lgstbase-1.0;-lgstreamer-1.0;-lgobject-2.0;-lglib-2.0
 GSTREAMER_LDFLAGS_OTHER:INTERNAL=
 GSTREAMER_LIBDIR:INTERNAL=
-GSTREAMER_LIBRARIES:INTERNAL=gstapp-1.0;gstbase-1.0;gstreamer-1.0;gobject-2.0;glib-2.0
+GSTREAMER_LIBRARIES:INTERNAL=gstapp-1.0;gstrtp-1.0;gstbase-1.0;gstreamer-1.0;gobject-2.0;glib-2.0
 GSTREAMER_LIBRARY_DIRS:INTERNAL=/usr/lib/x86_64-linux-gnu
 GSTREAMER_LIBS:INTERNAL=
 GSTREAMER_LIBS_L:INTERNAL=
@@ -369,14 +372,14 @@ GSTREAMER_LIBS_OTHER:INTERNAL=
 GSTREAMER_LIBS_PATHS:INTERNAL=
 GSTREAMER_MODULE_NAME:INTERNAL=
 GSTREAMER_PREFIX:INTERNAL=
-GSTREAMER_STATIC_CFLAGS:INTERNAL=-pthread;-I/usr/include/gstreamer-1.0;-I/usr/include/x86_64-linux-gnu;-I/usr/include/glib-2.0;-I/usr/lib/x86_64-linux-gnu/glib-2.0/include
+GSTREAMER_STATIC_CFLAGS:INTERNAL=-pthread;-I/usr/include/gstreamer-1.0;-I/usr/include/orc-0.4;-I/usr/include/gstreamer-1.0;-I/usr/include/x86_64-linux-gnu;-I/usr/include/glib-2.0;-I/usr/lib/x86_64-linux-gnu/glib-2.0/include
 GSTREAMER_STATIC_CFLAGS_I:INTERNAL=
 GSTREAMER_STATIC_CFLAGS_OTHER:INTERNAL=-pthread
-GSTREAMER_STATIC_INCLUDE_DIRS:INTERNAL=/usr/include/gstreamer-1.0;/usr/include/x86_64-linux-gnu;/usr/include/glib-2.0;/usr/lib/x86_64-linux-gnu/glib-2.0/include
-GSTREAMER_STATIC_LDFLAGS:INTERNAL=-L/usr/lib/x86_64-linux-gnu;-lgstapp-1.0;-lgstbase-1.0;-lgstreamer-1.0;-lm;-ldl;-Wl,--export-dynamic;-lgmodule-2.0;-pthread;-lunwind;-llzma;-ldw;-lbz2;-llzma;-pthread;-lpthread;-lelf;-lz;-lgobject-2.0;-lffi;-lglib-2.0;-pthread;-lm;-lpcre
-GSTREAMER_STATIC_LDFLAGS_OTHER:INTERNAL=-Wl,--export-dynamic;-pthread
+GSTREAMER_STATIC_INCLUDE_DIRS:INTERNAL=/usr/include/gstreamer-1.0;/usr/include/orc-0.4;/usr/include/gstreamer-1.0;/usr/include/x86_64-linux-gnu;/usr/include/glib-2.0;/usr/lib/x86_64-linux-gnu/glib-2.0/include
+GSTREAMER_STATIC_LDFLAGS:INTERNAL=-L/usr/lib/x86_64-linux-gnu;-lgstapp-1.0;-lgstrtp-1.0;-lm;-lgstaudio-1.0;-lm;-lgsttag-1.0;-lm;-lorc-0.4;-lm;-pthread;-lgstbase-1.0;-lgstreamer-1.0;-lm;-ldl;-Wl,--export-dynamic;-lgmodule-2.0;-pthread;-lunwind;-llzma;-ldw;-lbz2;-llzma;-pthread;-lpthread;-lelf;-lz;-lgobject-2.0;-lffi;-lglib-2.0;-pthread;-lm;-lpcre
+GSTREAMER_STATIC_LDFLAGS_OTHER:INTERNAL=-pthread;-Wl,--export-dynamic;-pthread
 GSTREAMER_STATIC_LIBDIR:INTERNAL=
-GSTREAMER_STATIC_LIBRARIES:INTERNAL=gstapp-1.0;gstbase-1.0;gstreamer-1.0;m;dl;gmodule-2.0;unwind;lzma;dw;bz2;lzma;pthread;elf;z;gobject-2.0;ffi;glib-2.0;m;pcre
+GSTREAMER_STATIC_LIBRARIES:INTERNAL=gstapp-1.0;gstrtp-1.0;m;gstaudio-1.0;m;gsttag-1.0;m;orc-0.4;m;gstbase-1.0;gstreamer-1.0;m;dl;gmodule-2.0;unwind;lzma;dw;bz2;lzma;pthread;elf;z;gobject-2.0;ffi;glib-2.0;m;pcre
 GSTREAMER_STATIC_LIBRARY_DIRS:INTERNAL=/usr/lib/x86_64-linux-gnu
 GSTREAMER_STATIC_LIBS:INTERNAL=
 GSTREAMER_STATIC_LIBS_L:INTERNAL=
@@ -393,11 +396,16 @@ GSTREAMER_gstreamer-app-1.0_LIBDIR:INTERNAL=/usr/lib/x86_64-linux-gnu
 GSTREAMER_gstreamer-app-1.0_MODULE_NAME:INTERNAL=gstreamer-app-1.0
 GSTREAMER_gstreamer-app-1.0_PREFIX:INTERNAL=/usr
 GSTREAMER_gstreamer-app-1.0_VERSION:INTERNAL=1.20.1
+GSTREAMER_gstreamer-rtp-1.0_INCLUDEDIR:INTERNAL=/usr/include
+GSTREAMER_gstreamer-rtp-1.0_LIBDIR:INTERNAL=/usr/lib/x86_64-linux-gnu
+GSTREAMER_gstreamer-rtp-1.0_MODULE_NAME:INTERNAL=gstreamer-rtp-1.0
+GSTREAMER_gstreamer-rtp-1.0_PREFIX:INTERNAL=/usr
+GSTREAMER_gstreamer-rtp-1.0_VERSION:INTERNAL=1.20.1
 //ADVANCED property for variable: PKG_CONFIG_ARGN
 PKG_CONFIG_ARGN-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: PKG_CONFIG_EXECUTABLE
 PKG_CONFIG_EXECUTABLE-ADVANCED:INTERNAL=1
-__pkg_config_arguments_GSTREAMER:INTERNAL=REQUIRED;IMPORTED_TARGET;gstreamer-1.0>=1.20;gstreamer-app-1.0>=1.20
+__pkg_config_arguments_GSTREAMER:INTERNAL=REQUIRED;IMPORTED_TARGET;gstreamer-1.0>=1.20;gstreamer-app-1.0>=1.20;gstreamer-rtp-1.0>=1.20
 __pkg_config_checked_GSTREAMER:INTERNAL=1
 //ADVANCED property for variable: pkgcfg_lib_GSTREAMER_glib-2.0
 pkgcfg_lib_GSTREAMER_glib-2.0-ADVANCED:INTERNAL=1
@@ -409,5 +417,7 @@ pkgcfg_lib_GSTREAMER_gstapp-1.0-ADVANCED:INTERNAL=1
 pkgcfg_lib_GSTREAMER_gstbase-1.0-ADVANCED:INTERNAL=1
 //ADVANCED property for variable: pkgcfg_lib_GSTREAMER_gstreamer-1.0
 pkgcfg_lib_GSTREAMER_gstreamer-1.0-ADVANCED:INTERNAL=1
+//ADVANCED property for variable: pkgcfg_lib_GSTREAMER_gstrtp-1.0
+pkgcfg_lib_GSTREAMER_gstrtp-1.0-ADVANCED:INTERNAL=1
 prefix_result:INTERNAL=/usr/lib/x86_64-linux-gnu
 

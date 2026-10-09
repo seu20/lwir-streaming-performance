@@ -96,6 +96,10 @@ add_executable(
     ${SOURCES}
 )
 
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_compile_definitions(video_pipeline PRIVATE _LINUX)
+endif()
+
 
 # ============================================================
 # Include directories

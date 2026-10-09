@@ -14,16 +14,24 @@
 #include <opencv2/core.hpp>
 #include <opencv2/videoio.hpp>
 
+struct ReceiverConfig
+{
+    int port = 5004;
+    bool measurement_enabled = true;
+    bool clocks_synchronized = false;
+    bool recording_enabled = false;
+    std::string recording_output_path;
+    double recording_fps = 30.0;
+    std::string metrics_output_dir;
+    double idle_timeout_seconds = 0.0;
+    int udp_buffer_bytes = -1;
+    int jitter_latency_ms = -1;
+};
+
 class Receiver
 {
 public:
-    Receiver(
-        int port,
-        bool measurement_enabled = true,
-        bool clocks_synchronized = false,
-        bool recording_enabled = false,
-        std::string output_path = {},
-        double recording_fps = 30.0);
+    explicit Receiver(ReceiverConfig config = {});
     ~Receiver();
 
     bool open();
@@ -68,6 +76,8 @@ private:
         gpointer user_data);
 
     void receive_rtp_metadata(GstPadProbeInfo* info);
+    std::unordered_map<GstClockTime, ReceivedMetadata>::iterator
+        find_metadata_for_decoder_pts(GstClockTime decoder_pts);
     void record_e2e(
         GstBuffer* buffer,
         std::chrono::system_clock::time_point received_at);
@@ -87,6 +97,7 @@ private:
         std::chrono::steady_clock::time_point received_at);
     void finish_recording();
     void save_recording_timestamps_csv() const;
+    std::string metric_path(const char* filename) const;
     bool install_e2e_probes();
     void remove_e2e_probes();
 
@@ -97,6 +108,10 @@ private:
     std::string output_path_;
     std::string timestamp_output_path_;
     double recording_fps_ = 30.0;
+    std::string metrics_output_dir_;
+    double idle_timeout_seconds_ = 0.0;
+    int udp_buffer_bytes_ = -1;
+    int jitter_latency_ms_ = -1;
 
     cv::VideoWriter video_writer_;
     cv::Size recording_frame_size_;
@@ -141,7 +156,9 @@ private:
 
     guint64 extended_rtp_timestamp_ = GST_CLOCK_TIME_NONE;
     guint64 rtp_timestamp_base_ = GST_CLOCK_TIME_NONE;
+    GstClockTime decoder_pts_offset_ = GST_CLOCK_TIME_NONE;
     bool clock_error_reported_ = false;
+    bool pts_diagnostic_reported_ = false;
 
     bool opened_ = false;
 };

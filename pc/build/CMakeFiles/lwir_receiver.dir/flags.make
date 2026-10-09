@@ -4,7 +4,7 @@
 # compile CXX with /usr/bin/c++
 CXX_DEFINES = 
 
-CXX_INCLUDES = -I/workspace/video_pipeline/pc -isystem /usr/include/opencv4 -isystem /usr/include/gstreamer-1.0 -isystem /usr/include/glib-2.0 -isystem /usr/lib/x86_64-linux-gnu/glib-2.0/include
+CXX_INCLUDES = -I/workspace/video_pipeline/pc -isystem /usr/include/opencv4 -isystem /usr/include/gstreamer-1.0 -isystem /usr/include/orc-0.4 -isystem /usr/include/glib-2.0 -isystem /usr/lib/x86_64-linux-gnu/glib-2.0/include
 
-CXX_FLAGS = -pthread -std=c++17
+CXX_FLAGS = -O3 -DNDEBUG -pthread -std=c++17
 

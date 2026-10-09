@@ -1,8 +1,23 @@
 #pragma once
 
 #include <pthread.h>
+#include <cstddef>
+#include <cstdint>
 #include <queue>
 #include <utility>
+
+enum class QueuePolicy
+{
+    Fifo,
+    Latest
+};
+
+struct QueueConfig
+{
+    // 0 means unbounded. Latest requires a positive maximum size.
+    std::size_t max_size = 0;
+    QueuePolicy policy = QueuePolicy::Fifo;
+};
 
 // 여러 pthread 사이에서 데이터를 안전하게 전달하기 위한 공통 Queue.
 template <typename T>
@@ -18,21 +33,29 @@ private:
     // 데이터가 들어오거나 종료될 때 깨우기 위해 사용
     pthread_cond_t cond_;
 
+    // Bounded FIFO producers wait here until a consumer frees a slot.
+    pthread_cond_t not_full_cond_;
+
     // Queue 종료 상태
     bool closed_;
+    QueueConfig config_;
+    std::uint64_t dropped_count_ = 0;
     
 public:
     // Mutex, Condition Variable 초기화
-    ThreadSafeQueue()
-        : closed_(false)
+    explicit ThreadSafeQueue(QueueConfig config = {})
+        : closed_(false),
+          config_(config)
     {
         pthread_mutex_init(&mutex_, nullptr);
         pthread_cond_init(&cond_, nullptr);
+        pthread_cond_init(&not_full_cond_, nullptr);
     }
 
     // Mutex, Condition Variable 자원 해제
     ~ThreadSafeQueue()
     {
+        pthread_cond_destroy(&not_full_cond_);
         pthread_cond_destroy(&cond_);
         pthread_mutex_destroy(&mutex_);
     }
@@ -46,6 +69,32 @@ public:
     bool push(T data)
     {
         pthread_mutex_lock(&mutex_);
+
+        if (config_.policy == QueuePolicy::Latest)
+        {
+            if (closed_ || config_.max_size == 0)
+            {
+                pthread_mutex_unlock(&mutex_);
+                return false;
+            }
+
+            while (queue_.size() >= config_.max_size)
+            {
+                queue_.pop();
+                ++dropped_count_;
+            }
+
+            queue_.push(std::move(data));
+            pthread_mutex_unlock(&mutex_);
+            pthread_cond_signal(&cond_);
+            return true;
+        }
+
+        while (!closed_ && config_.max_size > 0 &&
+               queue_.size() >= config_.max_size)
+        {
+            pthread_cond_wait(&not_full_cond_, &mutex_);
+        }
 
         if (closed_)
         {
@@ -107,6 +156,7 @@ public:
         queue_.pop();
 
         pthread_mutex_unlock(&mutex_);
+        pthread_cond_signal(&not_full_cond_);
         return true;
     }
 
@@ -121,6 +171,7 @@ public:
         pthread_mutex_unlock(&mutex_);
 
         pthread_cond_broadcast(&cond_);
+        pthread_cond_broadcast(&not_full_cond_);
     }
 
     // 현재 Queue가 비어 있는지 확인한다.
@@ -141,6 +192,14 @@ public:
 
         std::size_t result = queue_.size();
 
+        pthread_mutex_unlock(&mutex_);
+        return result;
+    }
+
+    std::uint64_t dropped_count()
+    {
+        pthread_mutex_lock(&mutex_);
+        const std::uint64_t result = dropped_count_;
         pthread_mutex_unlock(&mutex_);
         return result;
     }

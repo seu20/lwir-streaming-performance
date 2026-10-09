@@ -1,5 +1,11 @@
 #include "app/application.hpp"
 
+#include <filesystem>
+#include <fstream>
+#include <iomanip>
+#include <system_error>
+#include <utility>
+
 #include "common/logger.hpp"
 #include "common/metrics_report.hpp"
 
@@ -7,7 +13,9 @@
 Application::Application(
     const CaptureConfig& capture_config,
     const StreamingConfig& streaming_config,
-    bool measurement_enabled)
+    bool measurement_enabled,
+    QueueConfig queue_config,
+    std::string metrics_output_dir)
     : capture_(
           capture_config,
           streaming_config.width,
@@ -16,6 +24,10 @@ Application::Application(
       streaming_(
           streaming_config,
           measurement_enabled),
+
+      capture_queue_(queue_config),
+
+      streaming_queue_(queue_config),
 
       capture_thread_(
           capture_,
@@ -33,7 +45,8 @@ Application::Application(
           streaming_queue_,
           measurement_enabled),
 
-      measurement_enabled_(measurement_enabled)
+      measurement_enabled_(measurement_enabled),
+      metrics_output_dir_(std::move(metrics_output_dir))
 {
 }
 
@@ -54,6 +67,31 @@ bool Application::run()
 
     if (measurement_enabled_)
     {
+        std::filesystem::path output_dir =
+            metrics_output_dir_.empty()
+                ? std::filesystem::current_path()
+                : std::filesystem::path(metrics_output_dir_);
+        std::error_code directory_error;
+        std::filesystem::create_directories(
+            output_dir,
+            directory_error
+        );
+        if (directory_error)
+        {
+            Logger::error(
+                "[Metrics] 출력 디렉터리 생성 실패: " +
+                output_dir.string() + " (" +
+                directory_error.message() + ")"
+            );
+            return false;
+        }
+
+        const auto metric_path =
+            [&output_dir](const char* filename)
+            {
+                return (output_dir / filename).string();
+            };
+
         const auto& capture_metrics =
             capture_thread_.metrics();
 
@@ -66,6 +104,9 @@ bool Application::run()
         const auto encoding_metrics =
             streaming_.encoding_metrics();
 
+        const auto network_metrics =
+            streaming_.network_metrics();
+
         FrameMetricSummary frame_metrics;
         frame_metrics.capture_success_count =
             capture_thread_.success_count();
@@ -76,7 +117,9 @@ bool Application::run()
 
         // 현재 두 Queue 모두 일반 FIFO push()만 사용하므로
         // Queue 정책에 의해 명시적으로 제거된 Frame은 없다.
-        frame_metrics.queue_policy_drop_count = 0;
+        frame_metrics.queue_policy_drop_count =
+            capture_queue_.dropped_count() +
+            streaming_queue_.dropped_count();
         frame_metrics.preprocess_failure_count =
             preprocess_thread_.failure_count();
         frame_metrics.streaming_submit_failure_count =
@@ -127,35 +170,57 @@ bool Application::run()
 
         // Raw measurement CSV
         save_stage_metrics_csv(
-            "capture_metrics.csv",
+            metric_path("capture_metrics.csv"),
             capture_metrics
         );
 
         save_stage_metrics_csv(
-            "preprocess_metrics.csv",
+            metric_path("preprocess_metrics.csv"),
             preprocess_metrics
         );
 
         save_stage_metrics_csv(
-            "streaming_metrics.csv",
+            metric_path("streaming_metrics.csv"),
             streaming_metrics
         );
 
         save_encoding_metrics_csv(
-            "encoding_metrics.csv",
+            metric_path("encoding_metrics.csv"),
             encoding_metrics
         );
 
         save_fps_metrics_csv(
-            "fps_metrics.csv",
+            metric_path("fps_metrics.csv"),
             capture_thread_.fps_metrics(),
             streaming_thread_.fps_metrics()
         );
 
         save_frame_metrics_csv(
-            "frame_metrics.csv",
+            metric_path("frame_metrics.csv"),
             frame_metrics
         );
+
+        std::ofstream network_file(
+            metric_path("network_metrics.csv")
+        );
+        if (network_file.is_open())
+        {
+            network_file
+                << "rtp_packet_count,rtp_byte_count,"
+                << "duration_seconds,average_bitrate_kbps,"
+                << "metadata_injected_count,"
+                << "metadata_lookup_miss_count,"
+                << "metadata_extension_failure_count\n"
+                << std::fixed << std::setprecision(3)
+                << network_metrics.rtp_packet_count << ","
+                << network_metrics.rtp_byte_count << ","
+                << network_metrics.duration_seconds << ","
+                << network_metrics.average_bitrate_kbps << ","
+                << network_metrics.metadata_injected_count << ","
+                << network_metrics.metadata_lookup_miss_count << ","
+                << network_metrics.metadata_extension_failure_count
+                << "\n";
+        }
     }
 
 

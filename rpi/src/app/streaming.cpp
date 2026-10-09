@@ -4,6 +4,7 @@
 #include <chrono>
 #include <cstring>
 #include <mutex>
+#include <memory>
 #include <utility>
 
 #include <gst/rtp/gstrtpbuffer.h>
@@ -62,7 +63,10 @@ bool Streaming::open()
     converter_ = gst_element_factory_make("videoconvert", "converter");
     encoder_capsfilter_ =
         gst_element_factory_make("capsfilter", "encoder-caps");
-    encoder_   = gst_element_factory_make("x264enc", "encoder");
+    encoder_   = gst_element_factory_make(
+        config_.encoder_factory.c_str(),
+        "encoder"
+    );
     parser_    = gst_element_factory_make("h264parse", "parser");
     payloader_ = gst_element_factory_make("rtph264pay", "payloader");
     sink_      = gst_element_factory_make("udpsink", "sink");
@@ -111,11 +115,13 @@ bool Streaming::open()
     gst_caps_unref(caps);
 
 
-    // 설치된 x264enc가 지원하는 I420 형식으로 변환한다.
+    // Baseline은 I420 변환 경로를 사용한다. direct_gray8 실험에서는
+    // 현재 x264enc가 지원하는 GRAY8을 직접 전달한다.
     // 영상은 흑백 그대로이며 U/V 평면에는 중립 색상값이 들어간다.
     GstCaps* encoder_caps = gst_caps_new_simple(
         "video/x-raw",
-        "format", G_TYPE_STRING, "I420",
+        "format", G_TYPE_STRING,
+            config_.direct_gray8 ? "GRAY8" : "I420",
         "width", G_TYPE_INT, config_.width,
         "height", G_TYPE_INT, config_.height,
         "framerate", GST_TYPE_FRACTION, config_.fps, 1,
@@ -150,7 +156,68 @@ bool Streaming::open()
     // bitrate
     //   → 영상 품질 ↔ Network bandwidth trade-off
     //
-    // 지금은 위 옵션을 넣지 않는다.
+    // Empty/-1 값은 원래 element 기본값을 보존한다.
+    if (!config_.tune.empty())
+    {
+        gst_util_set_object_arg(
+            G_OBJECT(encoder_),
+            "tune",
+            config_.tune.c_str()
+        );
+    }
+
+    if (!config_.speed_preset.empty())
+    {
+        gst_util_set_object_arg(
+            G_OBJECT(encoder_),
+            "speed-preset",
+            config_.speed_preset.c_str()
+        );
+    }
+
+    if (config_.bframes >= 0)
+    {
+        g_object_set(
+            G_OBJECT(encoder_),
+            "bframes", config_.bframes,
+            nullptr
+        );
+    }
+
+    if (config_.bitrate_kbps > 0)
+    {
+        g_object_set(
+            G_OBJECT(encoder_),
+            "bitrate", config_.bitrate_kbps,
+            nullptr
+        );
+    }
+
+    if (config_.key_int_max >= 0)
+    {
+        g_object_set(
+            G_OBJECT(encoder_),
+            "key-int-max", config_.key_int_max,
+            nullptr
+        );
+    }
+
+    if (config_.gst_queue_depth >= 0)
+    {
+        g_object_set(
+            G_OBJECT(queue_),
+            "max-size-buffers", config_.gst_queue_depth,
+            "max-size-bytes", 0,
+            "max-size-time", static_cast<guint64>(0),
+            nullptr
+        );
+    }
+
+    g_object_set(
+        G_OBJECT(queue_),
+        "leaky", config_.gst_queue_leaky,
+        nullptr
+    );
 
 
     // H.264 bitstream을 RTP packet으로 변환.
@@ -202,16 +269,28 @@ bool Streaming::open()
         nullptr
     );
 
-    if (!gst_element_link_many(
-            appsrc_,
-            queue_,
-            converter_,
-            encoder_capsfilter_,
-            encoder_,
-            parser_,
-            payloader_,
-            sink_,
-            nullptr))
+    const bool linked = config_.direct_gray8
+        ? gst_element_link_many(
+              appsrc_,
+              queue_,
+              encoder_capsfilter_,
+              encoder_,
+              parser_,
+              payloader_,
+              sink_,
+              nullptr)
+        : gst_element_link_many(
+              appsrc_,
+              queue_,
+              converter_,
+              encoder_capsfilter_,
+              encoder_,
+              parser_,
+              payloader_,
+              sink_,
+              nullptr);
+
+    if (!linked)
     {
         Logger::error("[Streaming] Pipeline link 실패");
         return false;
@@ -262,39 +341,59 @@ bool Streaming::push(const Frame& frame)
 
 
     // GStreamer가 사용할 Frame Buffer 생성.
-    GstBuffer* buffer =
-        gst_buffer_new_allocate(
+    GstBuffer* buffer = nullptr;
+
+    if (config_.zero_copy_submit && frame.image.isContinuous())
+    {
+        auto* image_owner = new cv::Mat(frame.image);
+        buffer = gst_buffer_new_wrapped_full(
+            GST_MEMORY_FLAG_READONLY,
+            image_owner->data,
+            buffer_size,
+            0,
+            buffer_size,
+            image_owner,
+            [](gpointer data)
+            {
+                delete static_cast<cv::Mat*>(data);
+            }
+        );
+    }
+    else
+    {
+        buffer = gst_buffer_new_allocate(
             nullptr,
             buffer_size,
             nullptr
         );
+    }
 
     if (!buffer)
         return false;
 
 
-    GstMapInfo map{};
-
-    if (!gst_buffer_map(buffer, &map, GST_MAP_WRITE))
+    if (!(config_.zero_copy_submit && frame.image.isContinuous()))
     {
-        gst_buffer_unref(buffer);
-        return false;
+        GstMapInfo map{};
+
+        if (!gst_buffer_map(buffer, &map, GST_MAP_WRITE))
+        {
+            gst_buffer_unref(buffer);
+            return false;
+        }
+
+        // cv::Mat의 step/padding 가능성을 고려해서 row 단위로 복사한다.
+        for (int row = 0; row < frame.image.rows; ++row)
+        {
+            std::memcpy(
+                map.data + row * row_bytes,
+                frame.image.ptr<unsigned char>(row),
+                row_bytes
+            );
+        }
+
+        gst_buffer_unmap(buffer, &map);
     }
-
-
-    // OpenCV Frame → GstBuffer 복사.
-    //
-    // cv::Mat의 step/padding 가능성을 고려해서 row 단위로 복사한다.
-    for (int row = 0; row < frame.image.rows; ++row)
-    {
-        std::memcpy(
-            map.data + row * row_bytes,
-            frame.image.ptr<unsigned char>(row),
-            row_bytes
-        );
-    }
-
-    gst_buffer_unmap(buffer, &map);
 
 
     // Frame 하나의 재생 시간.
@@ -377,6 +476,40 @@ std::vector<StageMetric> Streaming::encoding_metrics() const
     );
 
     return encoding_metrics_;
+}
+
+
+NetworkMetricSummary Streaming::network_metrics() const
+{
+    std::lock_guard<std::mutex> lock(
+        encoding_mutex_
+    );
+
+    NetworkMetricSummary summary;
+    summary.rtp_packet_count = rtp_packet_count_;
+    summary.rtp_byte_count = rtp_byte_count_;
+    summary.metadata_injected_count =
+        metadata_injected_count_;
+    summary.metadata_lookup_miss_count =
+        metadata_lookup_miss_count_;
+    summary.metadata_extension_failure_count =
+        metadata_extension_failure_count_;
+
+    if (first_rtp_packet_at_ !=
+            std::chrono::steady_clock::time_point{} &&
+        last_rtp_packet_at_ > first_rtp_packet_at_)
+    {
+        summary.duration_seconds =
+            std::chrono::duration<double>(
+                last_rtp_packet_at_ -
+                first_rtp_packet_at_
+            ).count();
+        summary.average_bitrate_kbps =
+            static_cast<double>(rtp_byte_count_) * 8.0 /
+            summary.duration_seconds / 1000.0;
+    }
+
+    return summary;
 }
 
 
@@ -551,6 +684,21 @@ void Streaming::add_rtp_metadata(GstPadProbeInfo* info)
     if (!buffer)
         return;
 
+    {
+        std::lock_guard<std::mutex> lock(
+            encoding_mutex_
+        );
+        const auto now = std::chrono::steady_clock::now();
+        if (first_rtp_packet_at_ ==
+            std::chrono::steady_clock::time_point{})
+        {
+            first_rtp_packet_at_ = now;
+        }
+        last_rtp_packet_at_ = now;
+        ++rtp_packet_count_;
+        rtp_byte_count_ += gst_buffer_get_size(buffer);
+    }
+
     const GstClockTime pts =
         GST_BUFFER_PTS(buffer);
 
@@ -568,7 +716,10 @@ void Streaming::add_rtp_metadata(GstPadProbeInfo* info)
             encoded_frame_metadata_.find(pts);
 
         if (encoded == encoded_frame_metadata_.end())
+        {
+            ++metadata_lookup_miss_count_;
             return;
+        }
 
         metadata = encoded->second;
     }
@@ -617,12 +768,18 @@ void Streaming::add_rtp_metadata(GstPadProbeInfo* info)
     const gboolean marker =
         gst_rtp_buffer_get_marker(&rtp);
 
-    gst_rtp_buffer_add_extension_onebyte_header(
+    const gboolean extension_added =
+        gst_rtp_buffer_add_extension_onebyte_header(
         &rtp,
         kE2eMetadataExtensionId,
         extension.data(),
         extension.size()
     );
+
+    if (extension_added)
+        ++metadata_injected_count_;
+    else
+        ++metadata_extension_failure_count_;
 
     gst_rtp_buffer_unmap(&rtp);
 
