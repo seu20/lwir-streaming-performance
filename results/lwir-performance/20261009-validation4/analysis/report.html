@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Video pipeline experiment report</title>
+<style>
+body { font-family: Arial, sans-serif; margin: 32px; color: #111827; }
+h1, h2 { font-weight: 600; }
+svg { width: 100%; max-width: 1000px; height: auto; border: 1px solid #d1d5db; }
+table { border-collapse: collapse; font-size: 13px; }
+th, td { border-bottom: 1px solid #d1d5db; padding: 7px 9px; text-align: right; }
+th:first-child, td:first-child, th:nth-child(2), td:nth-child(2), th:nth-child(3), td:nth-child(3) { text-align: left; }
+th { background: #f3f4f6; }
+</style>
+</head>
+<body>
+<h1>Video pipeline experiment report</h1>
+<h2>P95 latency by stage</h2>
+<svg viewBox="0 0 1000 175" role="img" aria-label="P95 latency by condition and stage">
+<text x="0" y="42" font-size="12">B0 / capture</text><rect x="220" y="28" width="8.42" height="18" fill="#4f46e5" /><text x="238.42" y="42" font-size="12">22.098 ms</text><text x="0" y="72" font-size="12">B0 / preprocess</text><rect x="220" y="58" width="0.24" height="18" fill="#4f46e5" /><text x="230.24" y="72" font-size="12">0.625 ms</text><text x="0" y="102" font-size="12">B0 / streaming_submit</text><rect x="220" y="88" width="1.36" height="18" fill="#4f46e5" /><text x="231.36" y="102" font-size="12">3.571 ms</text><text x="0" y="132" font-size="12">B0 / encoding</text><rect x="220" y="118" width="650.00" height="18" fill="#4f46e5" /><text x="880.00" y="132" font-size="12">1705.668 ms</text>
+</svg>
+<h2>Run summary</h2>
+<table>
+<thead><tr><th>Condition</th><th>Run</th><th>Metric</th><th>Mean ms</th><th>Median ms</th><th>P95 ms</th><th>P99 ms</th><th>Max ms</th><th>Receiver FPS</th><th>Sent</th><th>Decoded</th><th>Gap</th></tr></thead>
+<tbody><tr><td>B0</td><td>run-01</td><td>capture</td><td>13.352</td><td>11.598</td><td>22.098</td><td>26.488</td><td>32.766</td><td>30.000</td><td>971</td><td>969</td><td>2</td></tr><tr><td>B0</td><td>run-01</td><td>preprocess</td><td>0.461</td><td>0.443</td><td>0.625</td><td>0.671</td><td>0.758</td><td>30.000</td><td>971</td><td>969</td><td>2</td></tr><tr><td>B0</td><td>run-01</td><td>streaming_submit</td><td>0.889</td><td>0.226</td><td>3.571</td><td>7.509</td><td>11.532</td><td>30.000</td><td>971</td><td>969</td><td>2</td></tr><tr><td>B0</td><td>run-01</td><td>encoding</td><td>1633.546</td><td>1641.279</td><td>1705.668</td><td>1708.613</td><td>1715.831</td><td>30.000</td><td>971</td><td>969</td><td>2</td></tr><tr><td>B0</td><td>run-01</td><td>e2e</td><td>1708.483</td><td>1719.165</td><td>1781.507</td><td>1789.464</td><td>1813.010</td><td>30.000</td><td>971</td><td>969</td><td>2</td></tr></tbody>
+</table>
+</body>
+</html>

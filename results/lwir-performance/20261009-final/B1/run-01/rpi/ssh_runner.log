@@ -1,0 +1,19 @@
+[INFO] [Main] 실험 조건=B1
+[INFO] [Application] 시작
+[INFO] [StreamingThread] 시작
+[INFO] [PreprocessThread] 시작
+[INFO] [CaptureThread] 시작
+[INFO] [Capture] Dataset 열기 완료: 971개 PNG, 30 FPS
+[INFO] [Streaming] 시작
+[INFO] [CaptureThread] 종료
+[INFO] [PreprocessThread] 종료
+[INFO] [Streaming] 종료
+[INFO] [StreamingThread] 종료
+[Metrics] Capture count=971 avg=10.101 ms max=27.751 ms p95=10.124 ms p99=17.458 ms
+[Metrics] Preprocess count=971 avg=0.450 ms max=1.004 ms p95=0.447 ms p99=0.752 ms
+[Metrics] Streaming Submit count=971 avg=0.180 ms max=0.431 ms p95=0.188 ms p99=0.235 ms
+[Metrics] H.264 Encoding count=971 avg=3.490 ms max=7.334 ms p95=4.522 ms p99=5.389 ms
+[Metrics] Capture FPS frames=971 duration=32.361 s average=30.005 FPS
+[Metrics] Streaming Submit FPS frames=971 duration=32.303 s average=30.059 FPS
+[Metrics] Frame counts capture=971 preprocess=971 streaming_submit=971 queue_policy_drop=0 preprocess_failure=0 streaming_submit_failure=0 dataset_deadline_miss=0
+[INFO] [Application] 종료

@@ -1,0 +1,32 @@
+{
+  "experiment": "lwir-performance",
+  "campaign": "20261009-validation4",
+  "condition": "B0",
+  "run_id": "run-01",
+  "started_at": "2026-10-09T22:23:00+09:00",
+  "finished_at": "2026-10-09T22:23:39+09:00",
+  "warmup_frames": 60,
+  "input": {
+    "source": "dataset",
+    "dataset_path": "/workspace/dataset/seq_001/images",
+    "frame_count": 971,
+    "format": "16-bit PNG",
+    "width": 640,
+    "height": 480,
+    "fps": 30
+  },
+  "network": {
+    "transport": "RTP/UDP",
+    "receiver_ip": "10.42.0.1",
+    "port": 5004
+  },
+  "git": {
+    "pc": "10788c2",
+    "rpi": "10788c2"
+  },
+  "exit_codes": {
+    "pc_receiver": 0,
+    "rpi_sender": 0
+  },
+  "recording_enabled": false
+}
