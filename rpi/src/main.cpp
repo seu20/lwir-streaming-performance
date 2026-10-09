@@ -5,12 +5,12 @@
 int main()
 {
     // 입력 설정: InputMode::Camera 또는 InputMode::Dataset.
-    const InputMode input_mode = InputMode::Camera;
+    const InputMode input_mode = InputMode::Dataset;
 
     // Dataset 모드에서 사용할 16-bit PNG 디렉터리.
     // 절대경로와 실행 위치 기준 상대경로를 모두 사용할 수 있다.
     const std::string dataset_path =
-        "/workspace/dataset/sequence_01/images";
+        "/workspace/dataset/seq_001/images";
 
     // Dataset 공급 FPS이며 Streaming caps에도 같은 값을 사용한다.
     const int input_fps = 30;
