@@ -1,4 +1,0 @@
-[Receiver] UDP port 5004 수신 시작
-[Receiver] 입력 없음 timeout으로 종료
-[Receiver] decoded frames=971 duration=36.844 s average=26.355 FPS
-[Receiver] observable missing frame IDs=0 denominator=971 drop_rate=0.000%

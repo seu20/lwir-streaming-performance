@@ -1,7 +1,0 @@
-[Receiver] 녹화 활성화: /workspace/video_pipeline/results/lwir-performance/20261009-final/B0/run-01/pc/B0.mp4 / 30 FPS / codec=mp4v
-[Receiver] UDP port 5004 수신 시작
-[Receiver] PTS match 실패 decoder=3324245660 normalized=110395468 nearest_delta=22926754
-[Receiver] 입력 없음 timeout으로 종료
-[Receiver] 녹화 종료: frames=968 mp4=/workspace/video_pipeline/results/lwir-performance/20261009-final/B0/run-01/pc/B0.mp4 timestamps=/workspace/video_pipeline/results/lwir-performance/20261009-final/B0/run-01/pc/B0_timestamps.csv
-[Receiver] decoded frames=968 duration=38.417 s average=25.197 FPS
-[Receiver] observable missing frame IDs=794 denominator=918 drop_rate=86.492%

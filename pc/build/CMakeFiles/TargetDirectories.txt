@@ -1,3 +1,0 @@
-/workspace/video_pipeline/pc/build/CMakeFiles/lwir_receiver.dir
-/workspace/video_pipeline/pc/build/CMakeFiles/edit_cache.dir
-/workspace/video_pipeline/pc/build/CMakeFiles/rebuild_cache.dir

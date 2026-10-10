@@ -1,6 +1,0 @@
-experiment,condition,run_id,metric,count,mean_ms,median_ms,p95_ms,p99_ms,max_ms,receiver_active_fps,sent_frames,decoded_frames,count_gap
-lwir-performance,B0,run-01,capture,911,13.352003293084522,11.598,22.098,26.4879,32.766,30.0,971,969,2
-lwir-performance,B0,run-01,preprocess,911,0.46110976948408344,0.443,0.625,0.6708,0.758,30.0,971,969,2
-lwir-performance,B0,run-01,streaming_submit,911,0.8890252469813392,0.226,3.5705,7.5088,11.532,30.0,971,969,2
-lwir-performance,B0,run-01,encoding,911,1633.5464313940727,1641.279,1705.6680000000001,1708.6129,1715.831,30.0,971,969,2
-lwir-performance,B0,run-01,e2e,909,1708.4828305830583,1719.165,1781.5066,1789.4642,1813.01,30.0,971,969,2

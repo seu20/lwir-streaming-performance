@@ -1,2 +1,0 @@
-rtp_packet_count,rtp_byte_count,duration_seconds,average_bitrate_kbps,metadata_injected_count,metadata_lookup_miss_count,metadata_extension_failure_count
-1304,376874,33.607,89.714,1304,0,0

@@ -1,2 +1,0 @@
-decoded_frame_count,metadata_matched_frame_count,metadata_unmatched_frame_count,observable_frame_span_count,missing_frame_id_count,observable_drop_rate_pct,out_of_order_frame_count,duplicate_frame_id_count
-969,969,0,969,0,0.000,0,0

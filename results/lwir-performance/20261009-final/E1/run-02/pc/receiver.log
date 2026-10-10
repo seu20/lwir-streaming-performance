@@ -1,5 +1,0 @@
-[Receiver] UDP port 5004 수신 시작
-[Receiver] PTS match 실패 decoder=1748419047 normalized=101290997 nearest_delta=1290997
-[Receiver] 입력 없음 timeout으로 종료
-[Receiver] decoded frames=971 duration=38.388 s average=25.295 FPS
-[Receiver] observable missing frame IDs=100 denominator=111 drop_rate=90.090%
