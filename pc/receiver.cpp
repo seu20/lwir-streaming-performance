@@ -23,6 +23,7 @@ constexpr guint8 kE2eMetadataExtensionId = 1;
 constexpr guint kE2eMetadataSize = 16;
 constexpr std::size_t kMaxE2eMetrics = 10000;
 constexpr std::size_t kMaxFpsMetrics = 10000;
+constexpr std::size_t kMaxPtsTraces = 40000;
 constexpr std::size_t kMaxPendingMetadata = 1000;
 constexpr guint kRtpClockRate = 90000;
 }
@@ -125,9 +126,9 @@ bool Receiver::open()
         "payload=96,"
         "clock-rate=90000\" " +
         jitter_element +
-        "! rtph264depay "
-        "! h264parse "
-        "! avdec_h264 "
+        "! rtph264depay name=depayloader "
+        "! h264parse name=parser "
+        "! avdec_h264 name=decoder "
         "! videoconvert "
         "! video/x-raw,format=BGR "
         "! appsink name=receiver_sink "
@@ -167,7 +168,23 @@ bool Receiver::open()
         "receiver_source"
     );
 
-    if (!appsink_ || !rtp_source_)
+    depayloader_ = gst_bin_get_by_name(
+        GST_BIN(pipeline_),
+        "depayloader"
+    );
+
+    parser_ = gst_bin_get_by_name(
+        GST_BIN(pipeline_),
+        "parser"
+    );
+
+    decoder_ = gst_bin_get_by_name(
+        GST_BIN(pipeline_),
+        "decoder"
+    );
+
+    if (!appsink_ || !rtp_source_ ||
+        !depayloader_ || !parser_ || !decoder_)
     {
         std::cerr
             << "[Receiver] Pipeline element를 찾을 수 없습니다\n";
@@ -430,6 +447,7 @@ void Receiver::run()
         print_measurement_summary();
         save_fps_metrics_csv();
         save_frame_metrics_csv();
+        save_pts_trace_csv();
     }
 
     cv::destroyAllWindows();
@@ -478,6 +496,198 @@ GstPadProbeReturn Receiver::appsink_probe(
     }
 
     return GST_PAD_PROBE_OK;
+}
+
+
+GstPadProbeReturn Receiver::pts_trace_probe(
+    GstPad* pad,
+    GstPadProbeInfo* info,
+    gpointer user_data)
+{
+    auto* receiver =
+        static_cast<Receiver*>(user_data);
+
+    GstBuffer* buffer =
+        GST_PAD_PROBE_INFO_BUFFER(info);
+
+    if (buffer && pad == receiver->depayloader_src_pad_)
+    {
+        buffer = receiver->identify_depayloaded_access_unit(
+            buffer
+        );
+
+        if (buffer)
+            GST_PAD_PROBE_INFO_DATA(info) = buffer;
+    }
+
+    if (buffer && pad == receiver->parser_src_pad_)
+        receiver->associate_access_unit(buffer);
+
+    if (buffer)
+        receiver->record_pts_trace(pad, buffer);
+
+    return GST_PAD_PROBE_OK;
+}
+
+
+GstBuffer* Receiver::identify_depayloaded_access_unit(
+    GstBuffer* buffer)
+{
+    GstStructure* stats = nullptr;
+
+    g_object_get(
+        G_OBJECT(depayloader_),
+        "stats", &stats,
+        nullptr
+    );
+
+    if (!stats)
+        return buffer;
+
+    guint rtp_timestamp = 0;
+    const gboolean has_timestamp =
+        gst_structure_get_uint(
+            stats,
+            "timestamp",
+            &rtp_timestamp
+        );
+
+    gst_structure_free(stats);
+
+    if (!has_timestamp)
+        return buffer;
+
+    std::lock_guard<std::mutex> lock(
+        metrics_mutex_
+    );
+
+    const auto metadata =
+        rtp_metadata_.find(rtp_timestamp);
+
+    if (metadata == rtp_metadata_.end())
+        return buffer;
+
+    const guint64 extended_timestamp =
+        gst_rtp_buffer_ext_timestamp(
+            &extended_rtp_timestamp_,
+            rtp_timestamp
+        );
+
+    buffer = gst_buffer_make_writable(buffer);
+
+    if (!buffer)
+        return nullptr;
+
+    /*
+     * udpsrc의 도착 시각이 아니라 RTP의 90 kHz presentation
+     * timestamp를 완성된 H.264 access unit에 직접 부여한다.
+     * Decode timestamp는 알 수 없으므로 parser가 계산하게 둔다.
+     */
+    GST_BUFFER_PTS(buffer) =
+        gst_util_uint64_scale(
+            extended_timestamp,
+            GST_SECOND,
+            kRtpClockRate
+        );
+    GST_BUFFER_DTS(buffer) = GST_CLOCK_TIME_NONE;
+
+    depayloaded_access_units_.push_back(
+        metadata->second
+    );
+
+    rtp_metadata_.erase(metadata);
+
+    return buffer;
+}
+
+
+void Receiver::associate_access_unit(GstBuffer* buffer)
+{
+    const GstClockTime pts =
+        GST_BUFFER_PTS(buffer);
+
+    std::lock_guard<std::mutex> lock(
+        metrics_mutex_
+    );
+
+    if (depayloaded_access_units_.empty())
+        return;
+
+    const ReceivedMetadata metadata =
+        depayloaded_access_units_.front();
+
+    depayloaded_access_units_.pop_front();
+
+    if (!GST_CLOCK_TIME_IS_VALID(pts))
+        return;
+
+    const auto inserted =
+        pending_metadata_.emplace(pts, metadata);
+
+    if (!inserted.second)
+        inserted.first->second = metadata;
+    else
+        pending_order_.push_back(pts);
+
+    while (pending_order_.size() >
+           kMaxPendingMetadata)
+    {
+        const GstClockTime oldest =
+            pending_order_.front();
+
+        pending_order_.pop_front();
+        pending_metadata_.erase(oldest);
+    }
+}
+
+
+void Receiver::record_pts_trace(
+    GstPad* pad,
+    GstBuffer* buffer)
+{
+    const char* stage = nullptr;
+    std::uint64_t* sequence = nullptr;
+
+    if (pad == depayloader_src_pad_)
+    {
+        stage = "depay_src";
+        sequence = &depayloader_src_sequence_;
+    }
+    else if (pad == parser_src_pad_)
+    {
+        stage = "parser_src";
+        sequence = &parser_src_sequence_;
+    }
+    else if (pad == decoder_sink_pad_)
+    {
+        stage = "decoder_sink";
+        sequence = &decoder_sink_sequence_;
+    }
+    else if (pad == decoder_src_pad_)
+    {
+        stage = "decoder_src";
+        sequence = &decoder_src_sequence_;
+    }
+
+    if (!stage || !sequence)
+        return;
+
+    std::lock_guard<std::mutex> lock(
+        metrics_mutex_
+    );
+
+    ++(*sequence);
+
+    if (pts_traces_.size() >= kMaxPtsTraces)
+        return;
+
+    pts_traces_.push_back({
+        stage,
+        *sequence,
+        GST_BUFFER_PTS(buffer),
+        GST_BUFFER_DTS(buffer),
+        GST_BUFFER_DURATION(buffer)
+    });
 }
 
 
@@ -553,37 +763,14 @@ void Receiver::receive_rtp_metadata(
         return;
     }
 
-    GstClockTime match_pts = GST_CLOCK_TIME_NONE;
-
     {
         std::lock_guard<std::mutex> lock(
             metrics_mutex_
         );
 
-        const guint64 extended_timestamp =
-            gst_rtp_buffer_ext_timestamp(
-                &extended_rtp_timestamp_,
-                rtp_timestamp
-            );
-
-        if (!GST_CLOCK_TIME_IS_VALID(
-                rtp_timestamp_base_))
-        {
-            rtp_timestamp_base_ =
-                extended_timestamp;
-        }
-
-        match_pts =
-            gst_util_uint64_scale(
-                extended_timestamp -
-                    rtp_timestamp_base_,
-                GST_SECOND,
-                kRtpClockRate
-            );
-
         const auto inserted =
-            pending_metadata_.emplace(
-                match_pts,
+            rtp_metadata_.emplace(
+                rtp_timestamp,
                 ReceivedMetadata{
                     frame_id,
                     captured_system_ns
@@ -599,34 +786,21 @@ void Receiver::receive_rtp_metadata(
         }
         else
         {
-            pending_order_.push_back(match_pts);
+            rtp_metadata_order_.push_back(
+                rtp_timestamp
+            );
         }
 
-        while (pending_order_.size() >
+        while (rtp_metadata_order_.size() >
                kMaxPendingMetadata)
         {
-            const GstClockTime oldest =
-                pending_order_.front();
+            const guint32 oldest =
+                rtp_metadata_order_.front();
 
-            pending_order_.pop_front();
-            pending_metadata_.erase(oldest);
+            rtp_metadata_order_.pop_front();
+            rtp_metadata_.erase(oldest);
         }
     }
-
-    /*
-     * UDP 전송 과정에서는 GstBuffer PTS가 전달되지 않는다.
-     * RTP timestamp를 확장한 PTS를 depayloader 입력에 부여하면
-     * decoder가 B-frame을 재정렬해도 appsink 출력과 동일 Frame을
-     * PTS로 대응시킬 수 있다.
-     */
-    buffer = gst_buffer_make_writable(buffer);
-
-    if (!buffer)
-        return;
-
-    GST_BUFFER_PTS(buffer) = match_pts;
-    GST_BUFFER_DTS(buffer) = GST_CLOCK_TIME_NONE;
-    GST_PAD_PROBE_INFO_DATA(info) = buffer;
 }
 
 
@@ -647,25 +821,7 @@ Receiver::find_metadata_for_decoder_pts(
         pending_order_.pop_front();
     }
 
-    if (!GST_CLOCK_TIME_IS_VALID(decoder_pts_offset_))
-    {
-        if (pending_order_.empty() ||
-            decoder_pts < pending_order_.front())
-        {
-            return pending_metadata_.end();
-        }
-
-        decoder_pts_offset_ =
-            decoder_pts - pending_order_.front();
-    }
-
-    if (decoder_pts < decoder_pts_offset_)
-        return pending_metadata_.end();
-
-    const GstClockTime normalized_pts =
-        decoder_pts - decoder_pts_offset_;
-
-    auto exact = pending_metadata_.find(normalized_pts);
+    auto exact = pending_metadata_.find(decoder_pts);
     if (exact != pending_metadata_.end())
         return exact;
 
@@ -678,9 +834,9 @@ Receiver::find_metadata_for_decoder_pts(
          ++candidate)
     {
         const GstClockTime distance =
-            candidate->first > normalized_pts
-                ? candidate->first - normalized_pts
-                : normalized_pts - candidate->first;
+            candidate->first > decoder_pts
+                ? candidate->first - decoder_pts
+                : decoder_pts - candidate->first;
 
         if (distance < nearest_distance)
         {
@@ -700,7 +856,6 @@ Receiver::find_metadata_for_decoder_pts(
         std::cerr
             << "[Receiver] PTS match 실패 decoder="
             << decoder_pts
-            << " normalized=" << normalized_pts
             << " nearest_delta=" << nearest_distance
             << '\n';
         pts_diagnostic_reported_ = true;
@@ -1086,6 +1241,54 @@ void Receiver::save_frame_metrics_csv() const
 }
 
 
+void Receiver::save_pts_trace_csv() const
+{
+    std::vector<PtsTrace> traces;
+
+    {
+        std::lock_guard<std::mutex> lock(
+            metrics_mutex_
+        );
+
+        traces = pts_traces_;
+    }
+
+    std::ofstream file(
+        metric_path("receiver_pts_trace.csv")
+    );
+
+    if (!file.is_open())
+    {
+        std::cerr
+            << "[Receiver] PTS trace CSV 열기 실패\n";
+        return;
+    }
+
+    file << "stage,sequence,pts_ns,dts_ns,duration_ns\n";
+
+    for (const auto& trace : traces)
+    {
+        file << trace.stage << ","
+             << trace.sequence << ",";
+
+        if (GST_CLOCK_TIME_IS_VALID(trace.pts))
+            file << trace.pts;
+
+        file << ",";
+
+        if (GST_CLOCK_TIME_IS_VALID(trace.dts))
+            file << trace.dts;
+
+        file << ",";
+
+        if (GST_CLOCK_TIME_IS_VALID(trace.duration))
+            file << trace.duration;
+
+        file << "\n";
+    }
+}
+
+
 void Receiver::print_measurement_summary() const
 {
     const double average_fps =
@@ -1428,8 +1631,36 @@ bool Receiver::install_e2e_probes()
             "sink"
         );
 
+    depayloader_src_pad_ =
+        gst_element_get_static_pad(
+            depayloader_,
+            "src"
+        );
+
+    parser_src_pad_ =
+        gst_element_get_static_pad(
+            parser_,
+            "src"
+        );
+
+    decoder_sink_pad_ =
+        gst_element_get_static_pad(
+            decoder_,
+            "sink"
+        );
+
+    decoder_src_pad_ =
+        gst_element_get_static_pad(
+            decoder_,
+            "src"
+        );
+
     if (!rtp_source_pad_ ||
-        !appsink_sink_pad_)
+        !appsink_sink_pad_ ||
+        !depayloader_src_pad_ ||
+        !parser_src_pad_ ||
+        !decoder_sink_pad_ ||
+        !decoder_src_pad_)
     {
         remove_e2e_probes();
         return false;
@@ -1453,8 +1684,48 @@ bool Receiver::install_e2e_probes()
             nullptr
         );
 
+    depayloader_src_probe_id_ =
+        gst_pad_add_probe(
+            depayloader_src_pad_,
+            GST_PAD_PROBE_TYPE_BUFFER,
+            &Receiver::pts_trace_probe,
+            this,
+            nullptr
+        );
+
+    parser_src_probe_id_ =
+        gst_pad_add_probe(
+            parser_src_pad_,
+            GST_PAD_PROBE_TYPE_BUFFER,
+            &Receiver::pts_trace_probe,
+            this,
+            nullptr
+        );
+
+    decoder_sink_probe_id_ =
+        gst_pad_add_probe(
+            decoder_sink_pad_,
+            GST_PAD_PROBE_TYPE_BUFFER,
+            &Receiver::pts_trace_probe,
+            this,
+            nullptr
+        );
+
+    decoder_src_probe_id_ =
+        gst_pad_add_probe(
+            decoder_src_pad_,
+            GST_PAD_PROBE_TYPE_BUFFER,
+            &Receiver::pts_trace_probe,
+            this,
+            nullptr
+        );
+
     if (rtp_probe_id_ == 0 ||
-        appsink_probe_id_ == 0)
+        appsink_probe_id_ == 0 ||
+        depayloader_src_probe_id_ == 0 ||
+        parser_src_probe_id_ == 0 ||
+        decoder_sink_probe_id_ == 0 ||
+        decoder_src_probe_id_ == 0)
     {
         remove_e2e_probes();
         return false;
@@ -1484,8 +1755,48 @@ void Receiver::remove_e2e_probes()
         );
     }
 
+    if (depayloader_src_pad_ &&
+        depayloader_src_probe_id_ != 0)
+    {
+        gst_pad_remove_probe(
+            depayloader_src_pad_,
+            depayloader_src_probe_id_
+        );
+    }
+
+    if (parser_src_pad_ &&
+        parser_src_probe_id_ != 0)
+    {
+        gst_pad_remove_probe(
+            parser_src_pad_,
+            parser_src_probe_id_
+        );
+    }
+
+    if (decoder_sink_pad_ &&
+        decoder_sink_probe_id_ != 0)
+    {
+        gst_pad_remove_probe(
+            decoder_sink_pad_,
+            decoder_sink_probe_id_
+        );
+    }
+
+    if (decoder_src_pad_ &&
+        decoder_src_probe_id_ != 0)
+    {
+        gst_pad_remove_probe(
+            decoder_src_pad_,
+            decoder_src_probe_id_
+        );
+    }
+
     rtp_probe_id_ = 0;
     appsink_probe_id_ = 0;
+    depayloader_src_probe_id_ = 0;
+    parser_src_probe_id_ = 0;
+    decoder_sink_probe_id_ = 0;
+    decoder_src_probe_id_ = 0;
 
     if (rtp_source_pad_)
     {
@@ -1497,6 +1808,30 @@ void Receiver::remove_e2e_probes()
     {
         gst_object_unref(appsink_sink_pad_);
         appsink_sink_pad_ = nullptr;
+    }
+
+    if (depayloader_src_pad_)
+    {
+        gst_object_unref(depayloader_src_pad_);
+        depayloader_src_pad_ = nullptr;
+    }
+
+    if (parser_src_pad_)
+    {
+        gst_object_unref(parser_src_pad_);
+        parser_src_pad_ = nullptr;
+    }
+
+    if (decoder_sink_pad_)
+    {
+        gst_object_unref(decoder_sink_pad_);
+        decoder_sink_pad_ = nullptr;
+    }
+
+    if (decoder_src_pad_)
+    {
+        gst_object_unref(decoder_src_pad_);
+        decoder_src_pad_ = nullptr;
     }
 }
 
@@ -1527,6 +1862,24 @@ void Receiver::close()
         rtp_source_ = nullptr;
     }
 
+    if (depayloader_)
+    {
+        gst_object_unref(depayloader_);
+        depayloader_ = nullptr;
+    }
+
+    if (parser_)
+    {
+        gst_object_unref(parser_);
+        parser_ = nullptr;
+    }
+
+    if (decoder_)
+    {
+        gst_object_unref(decoder_);
+        decoder_ = nullptr;
+    }
+
     if (pipeline_)
     {
         gst_object_unref(pipeline_);
@@ -1542,7 +1895,10 @@ void Receiver::close()
 
         pending_metadata_.clear();
         pending_order_.clear();
+        rtp_metadata_.clear();
+        rtp_metadata_order_.clear();
+        depayloaded_access_units_.clear();
+        pts_traces_.clear();
         extended_rtp_timestamp_ = GST_CLOCK_TIME_NONE;
-        rtp_timestamp_base_ = GST_CLOCK_TIME_NONE;
     }
 }

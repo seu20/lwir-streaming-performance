@@ -27,6 +27,7 @@ PC_FILES = (
     "receiver_fps_metrics.csv",
     "receiver_frame_metrics.csv",
     "receiver_e2e_metrics.csv",
+    "receiver_pts_trace.csv",
 )
 
 

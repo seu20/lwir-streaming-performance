@@ -65,6 +65,15 @@ private:
         double received_at_ms = 0.0;
     };
 
+    struct PtsTrace
+    {
+        std::string stage;
+        std::uint64_t sequence = 0;
+        GstClockTime pts = GST_CLOCK_TIME_NONE;
+        GstClockTime dts = GST_CLOCK_TIME_NONE;
+        GstClockTime duration = GST_CLOCK_TIME_NONE;
+    };
+
     static GstPadProbeReturn rtp_probe(
         GstPad* pad,
         GstPadProbeInfo* info,
@@ -75,7 +84,16 @@ private:
         GstPadProbeInfo* info,
         gpointer user_data);
 
+    static GstPadProbeReturn pts_trace_probe(
+        GstPad* pad,
+        GstPadProbeInfo* info,
+        gpointer user_data);
+
     void receive_rtp_metadata(GstPadProbeInfo* info);
+    GstBuffer* identify_depayloaded_access_unit(
+        GstBuffer* buffer);
+    void associate_access_unit(GstBuffer* buffer);
+    void record_pts_trace(GstPad* pad, GstBuffer* buffer);
     std::unordered_map<GstClockTime, ReceivedMetadata>::iterator
         find_metadata_for_decoder_pts(GstClockTime decoder_pts);
     void record_e2e(
@@ -89,6 +107,7 @@ private:
     void save_e2e_metrics_csv() const;
     void save_fps_metrics_csv() const;
     void save_frame_metrics_csv() const;
+    void save_pts_trace_csv() const;
     void print_measurement_summary() const;
     bool prepare_recording_output();
     bool initialize_video_writer(const cv::Size& frame_size);
@@ -127,18 +146,39 @@ private:
     GstElement* pipeline_ = nullptr;
     GstElement* appsink_ = nullptr;
     GstElement* rtp_source_ = nullptr;
+    GstElement* depayloader_ = nullptr;
+    GstElement* parser_ = nullptr;
+    GstElement* decoder_ = nullptr;
 
     GstPad* rtp_source_pad_ = nullptr;
     GstPad* appsink_sink_pad_ = nullptr;
+    GstPad* depayloader_src_pad_ = nullptr;
+    GstPad* parser_src_pad_ = nullptr;
+    GstPad* decoder_sink_pad_ = nullptr;
+    GstPad* decoder_src_pad_ = nullptr;
     gulong rtp_probe_id_ = 0;
     gulong appsink_probe_id_ = 0;
+    gulong depayloader_src_probe_id_ = 0;
+    gulong parser_src_probe_id_ = 0;
+    gulong decoder_sink_probe_id_ = 0;
+    gulong decoder_src_probe_id_ = 0;
 
     mutable std::mutex metrics_mutex_;
+    std::unordered_map<guint32, ReceivedMetadata>
+        rtp_metadata_;
+    std::deque<guint32> rtp_metadata_order_;
+    std::deque<ReceivedMetadata>
+        depayloaded_access_units_;
     std::unordered_map<GstClockTime, ReceivedMetadata>
         pending_metadata_;
     std::deque<GstClockTime> pending_order_;
     std::vector<E2eMetric> e2e_metrics_;
     std::vector<FpsMetric> fps_metrics_;
+    std::vector<PtsTrace> pts_traces_;
+    std::uint64_t depayloader_src_sequence_ = 0;
+    std::uint64_t parser_src_sequence_ = 0;
+    std::uint64_t decoder_sink_sequence_ = 0;
+    std::uint64_t decoder_src_sequence_ = 0;
     std::chrono::steady_clock::time_point fps_started_at_{};
     std::chrono::steady_clock::time_point
         fps_interval_started_at_{};
@@ -155,8 +195,6 @@ private:
     bool has_last_received_frame_id_ = false;
 
     guint64 extended_rtp_timestamp_ = GST_CLOCK_TIME_NONE;
-    guint64 rtp_timestamp_base_ = GST_CLOCK_TIME_NONE;
-    GstClockTime decoder_pts_offset_ = GST_CLOCK_TIME_NONE;
     bool clock_error_reported_ = false;
     bool pts_diagnostic_reported_ = false;
 

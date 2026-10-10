@@ -1,0 +1,32 @@
+{
+  "experiment": "lwir-performance",
+  "campaign": "20261010-e2e-rematch",
+  "condition": "B1",
+  "run_id": "run-02",
+  "started_at": "2026-10-10T18:55:01+09:00",
+  "finished_at": "2026-10-10T18:55:38+09:00",
+  "warmup_frames": 60,
+  "input": {
+    "source": "dataset",
+    "dataset_path": "/workspace/dataset/seq_001/images",
+    "frame_count": 971,
+    "format": "16-bit PNG",
+    "width": 640,
+    "height": 480,
+    "fps": 30
+  },
+  "network": {
+    "transport": "RTP/UDP",
+    "receiver_ip": "10.42.0.1",
+    "port": 5004
+  },
+  "git": {
+    "pc": "5c53471",
+    "rpi": "10788c2"
+  },
+  "exit_codes": {
+    "pc_receiver": 0,
+    "rpi_sender": 0
+  },
+  "recording_enabled": false
+}
